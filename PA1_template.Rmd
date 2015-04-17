@@ -8,18 +8,167 @@ output:
 
 ## Loading and preprocessing the data
 
+This secton loads the data and displays the structure and other information about it.
+
+```{r} 
+d <- read.csv(unz("activity.zip","activity.csv"))
+str(d)
+head(d)
+summary(d)
+```
+
+This process the data into a table using the *dplyr* package for this and subsequent processing. Data is copied into a table grouped by date first.
+
+```{r}
+library(dplyr)
+d <- tbl_df(d)
+d1 <- group_by(d, date)
+```
+
+Calculate the mean total number of steps taken per day by calculating the total number of steps per day and putting that in a data table with date and total steps.
+
+```{r}
+# calculate total steps per day then take the mean by day
+tspd <- summarise(d1,total=sum(steps,na.rm=TRUE))
+mspd <- mean(tspd$total,na.rm=TRUE)
+mspd
+```
+The mean steps per day is *`r format(mspd,ndigits=1)`*.
+
+Here is the table with the total steps per day.  
+```{r}
+# tspd already holds the total number of steps per day
+tspd
+summary(tspd)
+```
+
+This code produces a histogram of total steps per day using the *lattice* graphics package.
+
+```{r}
+# tspd hold the total number of steps per day
+library(lattice)
+histogram(~total,data=tspd, type="percent", 
+    breaks=c(0,2500,5000,7500,10000,12500,15000,17500,20000,22599,25000), 
+    xlab="Total Steps per Day", 
+    main ="Histogram of Total Steps per Day")
+```
 
 
 ## What is mean total number of steps taken per day?
 
 
+This calculates and report the mean and median of the total number of steps taken per day.
+
+```{r}
+mean_spd <- mean(tspd$total, na.rm=TRUE)
+median_spd <- median(tspd$total, na.rm=TRUE)
+```
+Mean steps per day: **`r format(mean_spd)`**  
+Median steps per day: **`r median_spd`**  
+
 
 ## What is the average daily activity pattern?
 
+
+This makes a time series plot of the 5-minute interval and the average number of steps taken across all days. The data is grouped by day then a table is created of the date and mean number of steps.
+
+```{r}
+# group data by interval, calculate mean steps per interval, and then plot.
+d2 <- group_by(d, interval) 
+mspi <- summarise(d2, average=mean(steps, na.rm=TRUE))
+xyplot(average ~ interval, mspi, type="l", 
+            main="Average Steps per Interval (missing data ignored)",
+            ylab="Average number of steps",xlab="5-minute Interval")
+```
+
+This determines Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps.
+
+```{r}
+mspi_ordered<-arrange(mspi,desc(average))
+mspi_ordered[1,]
+maxint <- mspi_ordered[1,]$interval
+```
+
+The interval with the maximum number of steps on average is **interval number `r maxint`.**
 
 
 ## Imputing missing values
 
 
+This culculates the total number of missing values in the dataset.
+
+```{r}
+na_count <- sum(is.na(d$steps))
+na_count
+```
+There are **`r na_count`** missing values (i.e., steps=NA).
+
+This code creates a new dataset that is equal to the original dataset with mean steps per interval substituted for the missing data for that inteval.
+
+Note this is not an ideal strategy. For example, on days with no data reported, it substitutes the same number of steps in each interval creating identical days to the average without regard to other acitvity that day. 
+
+```{r}
+# mspi is the mean number of steps each interval.
+summary(mspi)
+d3 <- d
+summary(d3)
+imp <- numeric(na_count)
+count <- 0
+# substitute this value for missing values.
+for (i in 1:nrow(d3)) 
+    if (is.na(d3[i,"steps"])) {
+         d3[i,"steps"] <- mspi[which(mspi$interval==d3$interval[i]),"average"]
+         count <- count+1
+         imp[count] <- as.numeric(mspi[which(mspi$interval==d3$interval[i]),"average"])
+    }
+summary(imp)
+summary(d3)
+```
+
+Here is a histogram of the total number of steps taken each day with the imputed data. 
+
+```{r} 
+d4 <- group_by(d3, date)
+tspd2 <- summarise(d4,total=sum(steps))
+summary(tspd2)
+mspd2 <- mean(tspd2$total)
+histogram(~total, data=tspd2, 
+   breaks=c(0,2500,5000,7500,10000,12500,15000,17500,20000,22599,25000), 
+          type="percent", xlab="Total steps", 
+          main ="Histogram of Total Steps per Day (missing data inputed)")
+```
+  
+This calculates the mean and median total number of steps taken per day with the imputed data.  
+
+```{r}
+mean_spd2 <- mean(tspd2$total)
+median_spd2 <- median(tspd2$total)
+```
+Mean steps per day: **`r format(mean_spd2)`**  
+Median steps per day: **`r format(median_spd2)`**  
+
+The mean and median differ from the estimates from the first part of the assignment. Both are made larger by imputing missing data. In this case the median also equals the mean, because the same data is substituted for days with no data. Overall, the estimates of the total daily number of steps is per day is often increased.
+
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+This creates a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+
+```{r}
+typeday <- ifelse(weekdays(as.Date(d3$date)) %in% c("Saturday","Sunday"),
+                     "weekend", "weekday")
+d3$typeday <- as.factor(typeday)
+d3 <- group_by(d3,interval,typeday)
+mspi2 <- summarise(d3,avg=mean(steps))
+mspi2
+```
+
+This creates a plot containing the 5-minute interval and the average number of steps taken, averaged across all weekday days or weekend days. 
+
+```{r}
+xyplot(avg ~ interval | typeday, mspi2, type="l", layout=c(1,2),
+            main="Average Steps per Interval (missing data imputed)",
+            ylab="Average number of steps",xlab="5-minute Interval")
+```
+
+We see a marked difference in activity patterns bedtween weekend days and weekday days. Weekday activity starts earlier in the day. It has one major peak earier in the day and another in the afternoon and evening. The weekend day data has a morning peak, but many more significant peaks through the day. Weekend activity is also higher later in the evening. Overall, there seems to be more activity on weekend days.
